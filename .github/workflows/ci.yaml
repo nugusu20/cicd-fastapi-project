@@ -50,16 +50,36 @@ jobs:
         run: |
           pytest
 
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t cicd-fastapi-project .
+
+  notify-slack:
+    runs-on: ubuntu-latest
+    needs: [lint, test, docker-build]
+    if: always()
+
+    steps:
       - name: Notify Slack
-        if: always()
         run: |
           STATUS="success"
-          if [ "${{ job.status }}" != "success" ]; then
+
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.docker-build.result }}" != "success" ]; then
             STATUS="failed"
           fi
 
+          MESSAGE="CI Pipeline ${STATUS} for ${{ github.repository }} on branch ${{ github.ref_name }}"
+
           curl -X POST -H 'Content-type: application/json' \
-          --data "{
-            \"text\": \"CI Pipeline ${STATUS} for ${{ github.repository }} on branch ${{ github.ref_name }}\"
-          }" \
+          --data "{\"text\":\"${MESSAGE}\"}" \
           ${{ secrets.SLACK_WEBHOOK_URL_ci }}
